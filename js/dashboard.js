@@ -7,6 +7,7 @@ const STATUS_MAP = {
   done: ['Done', 'Closed', 'Resolved', 'Completed', 'Merged']
 };
 const EXCLUDE_TYPES = ['Epic', 'Capability'];
+const STORY_POINTS_FIELD = 'customfield_10016'; // Update this to match your Jira instance
 
 /* ─── State ─── */
 let allTickets = [];
@@ -522,34 +523,33 @@ function renderTable() {
     return !excluded.includes(type);
   });
 
-  const cols = ['Key', 'Summary', 'Type', 'Status', 'Fix Version/s', 'Priority', 'Assignee', 'Created', 'Updated', 'Epic Link'];
+  const cols = ['Ticket ID', 'Assignee Name', 'Ticket Name', 'Story Points', 'Status', 'Created Date', 'End Date'];
   const thead = document.querySelector('#ticketsTable thead tr');
-  thead.innerHTML = cols.map(c => `<th data-col="${c.toLowerCase()}">${c} <i class="fas fa-sort"></i></th>`).join('');
+  thead.innerHTML = cols.map(c => `<th data-col="${c.toLowerCase().replace(/\s+/g, '')}">${c} <i class="fas fa-sort"></i></th>`).join('');
 
   const tbody = document.querySelector('#ticketsTable tbody');
   tbody.innerHTML = tableTickets.map(t => {
     const key = t.key;
-    const summary = t.fields.summary || '';
-    const type = t.fields.issuetype ? t.fields.issuetype.name : '';
-    const status = getStatus(t);
-    const fixVers = (t.fields.fixVersions || []).map(v => v.name).join(', ');
-    const pri = t.fields.priority ? t.fields.priority.name : '';
     const assignee = t.fields.assignee ? t.fields.assignee.displayName : 'Unassigned';
+    const summary = t.fields.summary || '';
+    const sp = t.fields[STORY_POINTS_FIELD];
+    const storyPoints = sp != null ? sp : '';
+    const status = getStatus(t);
     const created = t.fields.created ? new Date(t.fields.created).toLocaleDateString() : '';
-    const updated = t.fields.updated ? new Date(t.fields.updated).toLocaleDateString() : '';
-    const epic = getEpicKey(t) || '';
+    const endDate = t.fields.resolutiondate
+      ? new Date(t.fields.resolutiondate).toLocaleDateString()
+      : t.fields.duedate
+        ? new Date(t.fields.duedate).toLocaleDateString()
+        : '';
 
     return `<tr>
-      <td><a href="https://${new URL(PROXY_URL).hostname.replace('localhost', '') || ''}/browse/${key}" target="_blank">${key}</a></td>
+      <td><a href="${key.startsWith('http') ? key : `https://${PROJECT_KEY}.atlassian.net/browse/${key}`}" target="_blank">${key}</a></td>
+      <td>${escapeHtml(assignee)}</td>
       <td>${escapeHtml(summary)}</td>
-      <td><span class="badge badge-${type.toLowerCase()}">${type}</span></td>
+      <td>${storyPoints}</td>
       <td>${status}</td>
-      <td>${fixVers}</td>
-      <td>${pri}</td>
-      <td>${assignee}</td>
       <td>${created}</td>
-      <td>${updated}</td>
-      <td>${epic}</td>
+      <td>${endDate}</td>
     </tr>`;
   }).join('');
 

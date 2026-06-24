@@ -4,4 +4,5 @@
     ProxyPort = 8080
     ArtCustomFieldId = "customfield_10001"
     ScrumTeamCustomFieldId = "customfield_10002"
+    StoryPointsFieldId = "customfield_10016"
 }
