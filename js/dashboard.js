@@ -413,7 +413,7 @@ function renderEpicList(query) {
     return `<label>
       <input type="checkbox" value="${e.key}" ${checked}>
       <span class="epic-key">${e.key}</span>
-      <span class="epic-summary">${e.summary}</span>
+      <span class="epic-summary">${escapeHtml(e.summary)}</span>
     </label>`;
   }).join('');
   el.querySelectorAll('input[type="checkbox"]').forEach(cb => {
@@ -604,7 +604,7 @@ function buildDashboard() {
 
 async function init() {
   await checkProxy();
-  if (proxyOnline) { await loadAllData(); }
+  await loadAllData();
 }
 
 init();
