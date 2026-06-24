@@ -1,4 +1,3 @@
-/* ─── Configuration ─── */
 const PROXY_URL = 'http://localhost:8080';
 const PROJECT_KEY = 'Comcards_CrossApp';
 const STATUS_MAP = {
@@ -7,9 +6,8 @@ const STATUS_MAP = {
   done: ['Done', 'Closed', 'Resolved', 'Completed', 'Merged']
 };
 const EXCLUDE_TYPES = ['Epic', 'Capability'];
-const STORY_POINTS_FIELD = 'customfield_10016'; // Update this to match your Jira instance
+const STORY_POINTS_FIELD = 'customfield_10016';
 
-/* ─── State ─── */
 let allTickets = [];
 let allEpics = [];
 let allVersions = [];
@@ -18,14 +16,15 @@ let activeChartFilter = null;
 let charts = {};
 let proxyOnline = false;
 
-/* ─── DOM refs ─── */
+let currentPage = 0;
+let pageSize = 50;
+
 const $ = id => document.getElementById(id);
 const loadingEl = $('loadingOverlay');
 const lastUpdated = $('lastUpdated');
 const statusDot = $('connectionStatus');
 const statusText = $('statusText');
 
-/* ─── Proxy ─── */
 async function proxyGet(endpoint) {
   const res = await fetch(`${PROXY_URL}${endpoint}`);
   if (!res.ok) throw new Error(`Proxy error ${res.status}: ${await res.text()}`);
@@ -48,34 +47,26 @@ async function checkProxy() {
   return false;
 }
 
-/* ─── Modal helpers ─── */
 function showLoading() { loadingEl.classList.remove('hidden'); }
 function hideLoading() { loadingEl.classList.add('hidden'); }
 function flashMsg(msg, isError) {
   const el = $('refreshMsg');
   el.textContent = msg;
-  el.style.color = isError ? 'var(--red)' : 'var(--green)';
+  el.style.color = isError ? '#e74c3c' : '#27ae60';
   el.classList.remove('hidden');
   setTimeout(() => el.classList.add('hidden'), 4000);
 }
 
-/* ─── Data fetching ─── */
 async function loadAllData() {
   showLoading();
   try {
-    if (!proxyOnline && !(await checkProxy())) {
-      tryFallback();
-      return;
-    }
-
+    if (!proxyOnline && !(await checkProxy())) { tryFallback(); return; }
     const res = await fetch(`${PROXY_URL}/api/refresh-all?project=${PROJECT_KEY}`);
     if (!res.ok) throw new Error(`Proxy error ${res.status}`);
     const data = await res.json();
-
     allVersions = (data.versions || []).filter(v => v.name && v.name.startsWith('2026'));
     allEpics = data.epics || [];
     allTickets = data.tickets || [];
-
     lastUpdated.textContent = `Last updated: ${new Date().toLocaleString()}`;
     buildDashboard();
     flashMsg(`Loaded ${allTickets.length} tickets (live)`);
@@ -100,7 +91,6 @@ function tryFallback() {
   }
 }
 
-/* ─── Extract custom field values ─── */
 function getField(issue, fieldId) {
   const v = issue.fields[fieldId];
   if (!v) return null;
@@ -143,22 +133,13 @@ function getMonth(d) {
   return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
 }
 
-/* ─── Build filter options ─── */
 function buildFilters() {
   const epicMap = {};
   allEpics.forEach(e => { epicMap[e.key] = e.fields.summary || e.key; });
-
-  const epics = new Set();
-  const types = new Set();
-  const arts = new Set();
-  const teams = new Set();
-
+  const epics = new Set(), types = new Set(), arts = new Set(), teams = new Set();
   allTickets.forEach(t => {
     const ek = getEpicKey(t);
-    if (ek) {
-      const label = epicMap[ek] ? `${ek}::${epicMap[ek]}` : `${ek}::${ek}`;
-      epics.add(label);
-    }
+    if (ek) { const label = epicMap[ek] ? `${ek}::${epicMap[ek]}` : `${ek}::${ek}`; epics.add(label); }
     const type = t.fields.issuetype ? t.fields.issuetype.name : null;
     if (type) types.add(type);
     const art = getField(t, window.ART_FIELD || 'customfield_10001');
@@ -166,7 +147,6 @@ function buildFilters() {
     const team = getField(t, window.TEAM_FIELD || 'customfield_10002');
     if (team) teams.add(team);
   });
-
   populateSelect('filterFixVersion', allVersions.map(v => v.name), true);
   populateSelect('filterEpic', [...epics].sort().map(e => {
     const [k, s] = e.split('::');
@@ -182,30 +162,19 @@ function populateSelect(id, items, isDropdown) {
   sel.innerHTML = '';
   if (isDropdown) {
     const all = document.createElement('option');
-    all.value = '';
-    all.textContent = 'All';
-    sel.appendChild(all);
+    all.value = ''; all.textContent = 'All'; sel.appendChild(all);
   }
   items.forEach(item => {
     const opt = document.createElement('option');
-    if (typeof item === 'object') {
-      opt.value = item.value;
-      opt.textContent = item.label;
-    } else {
-      opt.value = item;
-      opt.textContent = item;
-    }
+    if (typeof item === 'object') { opt.value = item.value; opt.textContent = item.label; }
+    else { opt.value = item; opt.textContent = item; }
     sel.appendChild(opt);
   });
 }
 
-/* ─── Filtering ─── */
 function getSelected(id) {
   const sel = $(id);
-  if (!sel.multiple) {
-    const val = sel.value;
-    return val ? [val] : [];
-  }
+  if (!sel.multiple) { const val = sel.value; return val ? [val] : []; }
   return Array.from(sel.selectedOptions).map(o => o.value);
 }
 
@@ -215,31 +184,14 @@ function applyFilters() {
   const types = getSelected('filterType');
   const arts = getSelected('filterArt');
   const teams = getSelected('filterTeam');
-
   filteredTickets = allTickets.filter(t => {
-    if (fixVersions.length > 0) {
-      const tVersions = getFixVersions(t);
-      if (!tVersions.some(v => fixVersions.includes(v))) return false;
-    }
-    if (epics.length > 0) {
-      const ek = getEpicKey(t);
-      if (!ek || !epics.includes(ek)) return false;
-    }
-    if (types.length > 0) {
-      const type = t.fields.issuetype ? t.fields.issuetype.name : '';
-      if (!types.includes(type)) return false;
-    }
-    if (arts.length > 0) {
-      const art = getField(t, window.ART_FIELD || 'customfield_10001');
-      if (!art || !arts.includes(art)) return false;
-    }
-    if (teams.length > 0) {
-      const team = getField(t, window.TEAM_FIELD || 'customfield_10002');
-      if (!team || !teams.includes(team)) return false;
-    }
+    if (fixVersions.length > 0) { const tv = getFixVersions(t); if (!tv.some(v => fixVersions.includes(v))) return false; }
+    if (epics.length > 0) { const ek = getEpicKey(t); if (!ek || !epics.includes(ek)) return false; }
+    if (types.length > 0) { const type = t.fields.issuetype ? t.fields.issuetype.name : ''; if (!types.includes(type)) return false; }
+    if (arts.length > 0) { const art = getField(t, window.ART_FIELD || 'customfield_10001'); if (!art || !arts.includes(art)) return false; }
+    if (teams.length > 0) { const team = getField(t, window.TEAM_FIELD || 'customfield_10002'); if (!team || !teams.includes(team)) return false; }
     return true;
   });
-
   if (activeChartFilter) {
     const { type, value } = activeChartFilter;
     filteredTickets = filteredTickets.filter(t => {
@@ -248,105 +200,77 @@ function applyFilters() {
       return true;
     });
   }
-
   renderStats();
+  renderStatusMatrix();
   renderCharts();
+  currentPage = 0;
   renderTable();
 }
 
-/* ─── Stats ─── */
 function renderStats() {
-  let total = filteredTickets.length;
-  let newCount = 0, inProgCount = 0, doneCount = 0, otherCount = 0;
-  const statusCounts = {};
-
+  let newCount = 0, inProgCount = 0, doneCount = 0;
   filteredTickets.forEach(t => {
-    const s = getStatus(t);
-    statusCounts[s] = (statusCounts[s] || 0) + 1;
     const cat = getStatusCategory(t);
     if (cat === 'new') newCount++;
     else if (cat === 'inprogress') inProgCount++;
     else if (cat === 'done') doneCount++;
-    else otherCount++;
   });
-
-  $('statTotal').textContent = total;
+  $('statTotal').textContent = filteredTickets.length;
   $('statNew').textContent = newCount;
   $('statInProgress').textContent = inProgCount;
   $('statDone').textContent = doneCount;
-
-  // Other statuses
-  const dynamicEl = $('dynamicStats');
-  dynamicEl.innerHTML = '';
-  const known = ['new', 'inprogress', 'done'];
-  Object.entries(statusCounts).forEach(([status, count]) => {
-    const cat = known.includes(getStatusCategory({ fields: { status: { name: status } } })) ? null : status;
-    if (cat && status !== 'New' && status !== 'To Do' && status !== 'Open' &&
-        !status.toLowerCase().includes('progress') && !status.toLowerCase().includes('develop') &&
-        !status.toLowerCase().includes('review') && !status.toLowerCase().includes('test') &&
-        !status.toLowerCase().includes('qa') && !status.toLowerCase().includes('done') &&
-        !status.toLowerCase().includes('closed') && !status.toLowerCase().includes('resolved') &&
-        !status.toLowerCase().includes('complete') && !status.toLowerCase().includes('merged')) {
-      const div = document.createElement('div');
-      div.className = 'stat-card';
-      div.dataset.status = 'other';
-      div.innerHTML = `<div class="stat-value" style="color:var(--pink)">${count}</div><div class="stat-label">${status}</div>`;
-      div.onclick = () => toggleChartFilter('status', status);
-      dynamicEl.appendChild(div);
-    }
-  });
 }
 
-/* ─── Charts ─── */
-function renderCharts() {
-  if (charts.pie) charts.pie.destroy();
-  if (charts.donut) charts.donut.destroy();
-  if (charts.bar) charts.bar.destroy();
-  if (charts.typeBar) charts.typeBar.destroy();
-  if (charts.line) charts.line.destroy();
+function renderStatusMatrix() {
+  const counts = {};
+  filteredTickets.forEach(t => {
+    const s = getStatus(t);
+    counts[s] = (counts[s] || 0) + 1;
+  });
+  const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  const el = $('statusMatrix');
+  el.innerHTML = entries.map(([status, count]) =>
+    `<div class="status-matrix-item"><span class="sm-label">${status}</span><span class="sm-value">${count}</span></div>`
+  ).join('');
+}
 
-  renderPieChart();
-  renderDonutChart();
+function renderCharts() {
+  if (charts.bar) charts.bar.destroy();
+  if (charts.donut) charts.donut.destroy();
+  if (charts.pie) charts.pie.destroy();
+  if (charts.line) charts.line.destroy();
   renderBarChart();
-  renderTypeBarChart();
+  renderDonutChart();
+  renderPieChart();
   renderLineChart();
 }
 
+const CHART_COLORS = ['#0066cc','#3498db','#9b59b6','#e74c3c','#e67e22','#f39c12','#27ae60','#1abc9c','#e84393','#95a5a6'];
+
 function getColors(count) {
-  const palette = ['#6c5ce7','#a29bfe','#00cec9','#fdcb6e','#e17055','#74b9ff','#fd79a8','#55efc4','#f8a5c2','#81ecec'];
-  return Array.from({ length: count }, (_, i) => palette[i % palette.length]);
+  return Array.from({ length: count }, (_, i) => CHART_COLORS[i % CHART_COLORS.length]);
 }
 
-function renderPieChart() {
+function renderBarChart() {
   const statusCounts = {};
   filteredTickets.forEach(t => {
-    const s = getStatusCategory(t);
+    const s = getStatus(t);
     statusCounts[s] = (statusCounts[s] || 0) + 1;
   });
-  const labels = Object.keys(statusCounts);
-  const data = Object.values(statusCounts);
-  const colors = labels.map(l => {
-    if (l === 'new') return '#74b9ff';
-    if (l === 'inprogress') return '#fdcb6e';
-    if (l === 'done') return '#00cec9';
-    return '#fd79a8';
-  });
-
-  charts.pie = new Chart($('chartPie'), {
-    type: 'pie',
-    data: { labels, datasets: [{ data, backgroundColor: colors, borderColor: 'var(--bg)', borderWidth: 2 }] },
+  const labels = Object.keys(statusCounts).sort();
+  const data = labels.map(l => statusCounts[l]);
+  const colors = getColors(labels.length);
+  charts.bar = new Chart($('chartBar'), {
+    type: 'bar',
+    data: { labels, datasets: [{ label: 'Tickets', data, backgroundColor: colors, borderRadius: 4 }] },
     options: {
       responsive: true, maintainAspectRatio: false,
-      plugins: {
-        legend: { position: 'bottom', labels: { color: '#8b8fa3', font: { size: 10 } } },
-        title: { display: true, text: 'By Status Category', color: '#e2e4f0', font: { size: 12 } }
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: '#7f8c8d', font: { size: 11 } }, grid: { color: 'rgba(209,216,224,.4)' } },
+        y: { ticks: { color: '#7f8c8d', font: { size: 11 } }, grid: { color: 'rgba(209,216,224,.4)' }, beginAtZero: true }
       },
-      onClick: (e, els) => {
-        if (els.length > 0) {
-          const i = els[0].index;
-          toggleChartFilter('statusCategory', labels[i]);
-        }
-      }
+      onClick: (e, els) => { if (els.length > 0) toggleChartFilter('status', labels[els[0].index]); }
     }
   });
 }
@@ -360,86 +284,37 @@ function renderDonutChart() {
   const labels = Object.keys(typeCounts);
   const data = Object.values(typeCounts);
   const colors = getColors(labels.length);
-
   charts.donut = new Chart($('chartDonut'), {
     type: 'doughnut',
-    data: { labels, datasets: [{ data, backgroundColor: colors, borderColor: 'var(--bg)', borderWidth: 2 }] },
+    data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 2, borderColor: '#fff' }] },
     options: {
       responsive: true, maintainAspectRatio: false,
       cutout: '60%',
       plugins: {
-        legend: { position: 'bottom', labels: { color: '#8b8fa3', font: { size: 10 } } },
-        title: { display: true, text: 'By Type', color: '#e2e4f0', font: { size: 12 } }
+        legend: { position: 'bottom', labels: { color: '#7f8c8d', font: { size: 11 }, boxWidth: 12, padding: 12 } }
       },
-      onClick: (e, els) => {
-        if (els.length > 0) { toggleChartFilter('type', labels[els[0].index]); }
-      }
+      onClick: (e, els) => { if (els.length > 0) toggleChartFilter('type', labels[els[0].index]); }
     }
   });
 }
 
-function renderBarChart() {
-  const statusCounts = {};
+function renderPieChart() {
+  const dataMap = {};
   filteredTickets.forEach(t => {
-    const s = getStatus(t);
-    statusCounts[s] = (statusCounts[s] || 0) + 1;
+    const sp = t.fields[STORY_POINTS_FIELD];
+    const range = sp == null ? 'Unestimated' : sp <= 3 ? '≤ 3' : sp <= 8 ? '4-8' : sp <= 13 ? '9-13' : '> 13';
+    dataMap[range] = (dataMap[range] || 0) + 1;
   });
-  const labels = Object.keys(statusCounts).sort();
-  const data = labels.map(l => statusCounts[l]);
+  const labels = Object.keys(dataMap);
+  const data = Object.values(dataMap);
   const colors = getColors(labels.length);
-
-  charts.bar = new Chart($('chartBar'), {
-    type: 'bar',
-    data: {
-      labels,
-      datasets: [{ label: 'Tickets', data, backgroundColor: colors, borderColor: colors.map(() => 'transparent'), borderWidth: 0, borderRadius: 4 }]
-    },
+  charts.pie = new Chart($('chartPie'), {
+    type: 'pie',
+    data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 2, borderColor: '#fff' }] },
     options: {
       responsive: true, maintainAspectRatio: false,
       plugins: {
-        legend: { display: false },
-        title: { display: true, text: 'By Status', color: '#e2e4f0', font: { size: 12 } }
-      },
-      scales: {
-        x: { ticks: { color: '#8b8fa3', font: { size: 9 } }, grid: { color: 'rgba(42,46,69,.3)' } },
-        y: { ticks: { color: '#8b8fa3', font: { size: 9 } }, grid: { color: 'rgba(42,46,69,.3)' }, beginAtZero: true }
-      },
-      onClick: (e, els) => {
-        if (els.length > 0) { toggleChartFilter('status', labels[els[0].index]); }
-      }
-    }
-  });
-}
-
-function renderTypeBarChart() {
-  const typeCounts = {};
-  filteredTickets.forEach(t => {
-    const type = t.fields.issuetype ? t.fields.issuetype.name : 'Unknown';
-    typeCounts[type] = (typeCounts[type] || 0) + 1;
-  });
-  const labels = Object.keys(typeCounts).sort();
-  const data = labels.map(l => typeCounts[l]);
-  const colors = getColors(labels.length);
-
-  charts.typeBar = new Chart($('chartTypeBar'), {
-    type: 'bar',
-    data: {
-      labels,
-      datasets: [{ label: 'Tickets', data, backgroundColor: colors, borderRadius: 4 }]
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      indexAxis: 'y',
-      plugins: {
-        legend: { display: false },
-        title: { display: true, text: 'By Type (Horizontal)', color: '#e2e4f0', font: { size: 12 } }
-      },
-      scales: {
-        x: { ticks: { color: '#8b8fa3', font: { size: 9 } }, grid: { color: 'rgba(42,46,69,.3)' }, beginAtZero: true },
-        y: { ticks: { color: '#8b8fa3', font: { size: 9 } }, grid: { color: 'rgba(42,46,69,.3)' } }
-      },
-      onClick: (e, els) => {
-        if (els.length > 0) { toggleChartFilter('type', labels[els[0].index]); }
+        legend: { position: 'bottom', labels: { color: '#7f8c8d', font: { size: 11 }, boxWidth: 12, padding: 12 } }
       }
     }
   });
@@ -450,68 +325,49 @@ function renderLineChart() {
   filteredTickets.forEach(t => {
     const createdMonth = getMonth(t.fields.created);
     const resolvedMonth = getMonth(t.fields.resolutiondate);
-    const cat = getStatusCategory(t);
-
     if (createdMonth) {
-      if (!monthData[createdMonth]) monthData[createdMonth] = { created: 0, resolved: 0, inprogress: 0, cumOpen: 0 };
+      if (!monthData[createdMonth]) monthData[createdMonth] = { created: 0, resolved: 0, cumOpen: 0 };
       monthData[createdMonth].created++;
     }
     if (resolvedMonth) {
-      if (!monthData[resolvedMonth]) monthData[resolvedMonth] = { created: 0, resolved: 0, inprogress: 0, cumOpen: 0 };
+      if (!monthData[resolvedMonth]) monthData[resolvedMonth] = { created: 0, resolved: 0, cumOpen: 0 };
       monthData[resolvedMonth].resolved++;
     }
   });
-
-  // Cumulative
   let runningOpen = 0;
   const sortedMonths = Object.keys(monthData).sort();
   sortedMonths.forEach(m => {
     runningOpen += (monthData[m].created || 0) - (monthData[m].resolved || 0);
     monthData[m].cumOpen = runningOpen;
   });
-
-  // In progress per month (by creation month)
-  filteredTickets.forEach(t => {
-    const cm = getMonth(t.fields.created);
-    if (cm && monthData[cm]) {
-      const cat = getStatusCategory(t);
-      monthData[cm].inprogress += (cat === 'inprogress' || cat === 'new') ? 1 : 0;
-    }
-  });
-
   const labels = sortedMonths.length > 0 ? sortedMonths : ['2026-01'];
   const createdData = labels.map(m => monthData[m]?.created || 0);
   const resolvedData = labels.map(m => monthData[m]?.resolved || 0);
-  const inProgData = labels.map(m => monthData[m]?.inprogress || 0);
   const cumData = labels.map(m => monthData[m]?.cumOpen || 0);
-
   charts.line = new Chart($('chartLine'), {
     type: 'line',
     data: {
       labels,
       datasets: [
-        { label: 'Created', data: createdData, borderColor: '#74b9ff', backgroundColor: 'rgba(116,185,255,.1)', fill: true, tension: .4, pointRadius: 3 },
-        { label: 'In Progress', data: inProgData, borderColor: '#fdcb6e', backgroundColor: 'rgba(253,203,110,.1)', fill: true, tension: .4, pointRadius: 3 },
-        { label: 'Resolved', data: resolvedData, borderColor: '#00cec9', backgroundColor: 'rgba(0,206,201,.1)', fill: true, tension: .4, pointRadius: 3 },
-        { label: 'Open (Cumulative)', data: cumData, borderColor: '#6c5ce7', backgroundColor: 'transparent', borderDash: [5, 5], tension: .4, pointRadius: 2 }
+        { label: 'Created', data: createdData, borderColor: '#3498db', backgroundColor: 'rgba(52,152,219,.08)', fill: true, tension: .4, pointRadius: 3 },
+        { label: 'Resolved', data: resolvedData, borderColor: '#27ae60', backgroundColor: 'rgba(39,174,96,.08)', fill: true, tension: .4, pointRadius: 3 },
+        { label: 'Open (Cumulative)', data: cumData, borderColor: '#e74c3c', backgroundColor: 'transparent', borderDash: [5, 5], tension: .4, pointRadius: 2 }
       ]
     },
     options: {
       responsive: true, maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
       plugins: {
-        title: { display: true, text: 'Monthly Project Progress', color: '#e2e4f0', font: { size: 14 } },
-        legend: { position: 'bottom', labels: { color: '#8b8fa3', font: { size: 10 } } }
+        legend: { position: 'bottom', labels: { color: '#7f8c8d', font: { size: 11 }, boxWidth: 12, padding: 12 } }
       },
       scales: {
-        x: { ticks: { color: '#8b8fa3', font: { size: 9 } }, grid: { color: 'rgba(42,46,69,.3)' } },
-        y: { ticks: { color: '#8b8fa3', font: { size: 9 } }, grid: { color: 'rgba(42,46,69,.3)' }, beginAtZero: true }
+        x: { ticks: { color: '#7f8c8d', font: { size: 11 } }, grid: { color: 'rgba(209,216,224,.4)' } },
+        y: { ticks: { color: '#7f8c8d', font: { size: 11 } }, grid: { color: 'rgba(209,216,224,.4)' }, beginAtZero: true }
       }
     }
   });
 }
 
-/* ─── Chart filter toggle ─── */
 function toggleChartFilter(type, value) {
   if (activeChartFilter && activeChartFilter.type === type && activeChartFilter.value === value) {
     activeChartFilter = null;
@@ -521,7 +377,6 @@ function toggleChartFilter(type, value) {
   applyFilters();
 }
 
-/* ─── Table ─── */
 function renderTable() {
   const excluded = EXCLUDE_TYPES;
   const tableTickets = filteredTickets.filter(t => {
@@ -533,8 +388,13 @@ function renderTable() {
   const thead = document.querySelector('#ticketsTable thead tr');
   thead.innerHTML = cols.map(c => `<th data-col="${c.toLowerCase().replace(/\s+/g, '')}">${c} <i class="fas fa-sort"></i></th>`).join('');
 
+  const totalPages = Math.ceil(tableTickets.length / pageSize) || 1;
+  if (currentPage >= totalPages) currentPage = totalPages - 1;
+  const start = currentPage * pageSize;
+  const pageTickets = tableTickets.slice(start, start + pageSize);
+
   const tbody = document.querySelector('#ticketsTable tbody');
-  tbody.innerHTML = tableTickets.map(t => {
+  tbody.innerHTML = pageTickets.map(t => {
     const key = t.key;
     const assignee = t.fields.assignee ? t.fields.assignee.displayName : 'Unassigned';
     const summary = t.fields.summary || '';
@@ -547,7 +407,6 @@ function renderTable() {
     const dueRaw = t.fields.duedate || '';
     const endRaw = resolutionRaw || dueRaw;
     const endDate = endRaw ? new Date(endRaw).toLocaleDateString() : '';
-
     return `<tr>
       <td data-sort="${key}"><a href="${key.startsWith('http') ? key : `https://${PROJECT_KEY}.atlassian.net/browse/${key}`}" target="_blank">${key}</a></td>
       <td data-sort="${escapeHtml(assignee.toLowerCase())}">${escapeHtml(assignee)}</td>
@@ -559,11 +418,33 @@ function renderTable() {
     </tr>`;
   }).join('');
 
-  $('tableCount').textContent = `${tableTickets.length} tickets`;
+  $('tableStatus').textContent = `${tableTickets.length} issues`;
+  renderPagination(tableTickets.length);
 
-  // Sort
   document.querySelectorAll('#ticketsTable th').forEach(th => {
     th.onclick = () => sortTable(th.dataset.col);
+  });
+}
+
+function renderPagination(totalItems) {
+  const totalPages = Math.ceil(totalItems / pageSize) || 1;
+  $('pageInfo').textContent = `${totalItems > 0 ? currentPage * pageSize + 1 : 0}-${Math.min((currentPage + 1) * pageSize, totalItems)} of ${totalItems}`;
+  $('pagePrev').disabled = currentPage <= 0;
+  $('pageNext').disabled = currentPage >= totalPages - 1;
+
+  const pageNumEl = $('pageNumbers');
+  let html = '';
+  const maxVisible = 5;
+  let startP = Math.max(0, currentPage - Math.floor(maxVisible / 2));
+  let endP = Math.min(totalPages, startP + maxVisible);
+  if (endP - startP < maxVisible) startP = Math.max(0, endP - maxVisible);
+  for (let i = startP; i < endP; i++) {
+    html += `<button class="page-btn${i === currentPage ? ' active' : ''}" data-page="${i}">${i + 1}</button>`;
+  }
+  pageNumEl.innerHTML = html;
+
+  pageNumEl.querySelectorAll('.page-btn').forEach(btn => {
+    btn.onclick = () => { currentPage = parseInt(btn.dataset.page); renderTable(); };
   });
 }
 
@@ -581,36 +462,23 @@ function sortTable(col) {
   const rows = Array.from(tbody.querySelectorAll('tr'));
   const colIdx = Array.from(document.querySelector('#ticketsTable thead tr').children).findIndex(th => th.dataset.col === col);
   if (colIdx < 0) return;
-
   rows.sort((a, b) => {
     const va = a.children[colIdx]?.getAttribute('data-sort') || a.children[colIdx]?.textContent.trim() || '';
     const vb = b.children[colIdx]?.getAttribute('data-sort') || b.children[colIdx]?.textContent.trim() || '';
-
-    // Try numeric comparison first
     const na = parseFloat(va), nb = parseFloat(vb);
     if (!isNaN(na) && !isNaN(nb)) return (na - nb) * dir;
-
-    // Try date comparison (ISO strings)
     const da = new Date(va), db = new Date(vb);
     if (!isNaN(da.getTime()) && !isNaN(db.getTime())) return (da - db) * dir;
-
-    // Fall back to string comparison
     return va.localeCompare(vb) * dir;
   });
   rows.forEach(r => tbody.appendChild(r));
-
-  // Update sort icons
   document.querySelectorAll('#ticketsTable th').forEach(th => {
     const icon = th.querySelector('i');
-    if (th.dataset.col === col) {
-      icon.className = dir === 1 ? 'fas fa-sort-up' : 'fas fa-sort-down';
-    } else {
-      icon.className = 'fas fa-sort';
-    }
+    if (th.dataset.col === col) { icon.className = dir === 1 ? 'fas fa-sort-up' : 'fas fa-sort-down'; }
+    else { icon.className = 'fas fa-sort'; }
   });
 }
 
-/* ─── Search ─── */
 $('tableSearch').addEventListener('input', function() {
   const q = this.value.toLowerCase();
   document.querySelectorAll('#ticketsTable tbody tr').forEach(tr => {
@@ -618,21 +486,25 @@ $('tableSearch').addEventListener('input', function() {
   });
 });
 
-/* ─── Filter events ─── */
+$('pagePrev').onclick = () => { if (currentPage > 0) { currentPage--; renderTable(); } };
+$('pageNext').onclick = () => {
+  const total = filteredTickets.filter(t => { const type = t.fields.issuetype ? t.fields.issuetype.name : ''; return !EXCLUDE_TYPES.includes(type); }).length;
+  if ((currentPage + 1) * pageSize < total) { currentPage++; renderTable(); }
+};
+$('pageSizeSelect').onchange = function() {
+  pageSize = parseInt(this.value);
+  currentPage = 0;
+  renderTable();
+};
+
 document.querySelectorAll('.sidebar select').forEach(sel => {
-  sel.addEventListener('change', () => {
-    activeChartFilter = null;
-    applyFilters();
-  });
+  sel.addEventListener('change', () => { activeChartFilter = null; applyFilters(); });
 });
 
 $('clearFiltersBtn').onclick = () => {
   document.querySelectorAll('.sidebar select').forEach(s => {
-    if (s.multiple) {
-      s.selectedIndex = -1;
-    } else {
-      s.value = '';
-    }
+    if (s.multiple) s.selectedIndex = -1;
+    else s.value = '';
   });
   activeChartFilter = null;
   applyFilters();
@@ -640,7 +512,6 @@ $('clearFiltersBtn').onclick = () => {
 
 $('refreshBtn').onclick = loadAllData;
 
-/* ─── Open jira link ─── */
 document.querySelector('#ticketsTable tbody').addEventListener('click', e => {
   const link = e.target.closest('a');
   if (link) return;
@@ -651,12 +522,14 @@ document.querySelector('#ticketsTable tbody').addEventListener('click', e => {
   }
 });
 
-/* ─── Init ─── */
+function buildDashboard() {
+  buildFilters();
+  applyFilters();
+}
+
 async function init() {
   await checkProxy();
-  if (proxyOnline) {
-    await loadAllData();
-  }
+  if (proxyOnline) { await loadAllData(); }
 }
 
 init();

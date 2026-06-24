@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Jira Dashboard - Comcards_CrossApp</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.0/css/all.min.css">
 <link rel="stylesheet" href="css/style.css">
 </head>
@@ -44,80 +47,94 @@
       <div class="sidebar-section">
         <h3><i class="fas fa-filter"></i> Filters</h3>
 
-      <div class="filter-group">
-        <label><i class="fas fa-tag"></i> Fix Version/s</label>
-        <select id="filterFixVersion"></select>
-      </div>
+        <div class="filter-group">
+          <label>Fix Version/s</label>
+          <select id="filterFixVersion"></select>
+        </div>
 
-      <div class="filter-group">
-        <label><i class="fas fa-bookmark"></i> Epic</label>
-        <select id="filterEpic" multiple></select>
-      </div>
+        <div class="filter-group">
+          <label>Epic</label>
+          <select id="filterEpic" multiple></select>
+        </div>
 
-      <div class="filter-group">
-        <label><i class="fas fa-tasks"></i> Type</label>
-        <select id="filterType"></select>
-      </div>
+        <div class="filter-group">
+          <label>Type</label>
+          <select id="filterType"></select>
+        </div>
 
-      <div class="filter-group">
-        <label><i class="fas fa-train"></i> ART</label>
-        <select id="filterArt"></select>
-      </div>
+        <div class="filter-group">
+          <label>ART</label>
+          <select id="filterArt"></select>
+        </div>
 
-      <div class="filter-group">
-        <label><i class="fas fa-users"></i> Scrum Team</label>
-        <select id="filterTeam"></select>
-      </div>
-
+        <div class="filter-group">
+          <label>Scrum Team</label>
+          <select id="filterTeam"></select>
+        </div>
       </div>
 
       <button id="clearFiltersBtn" class="btn-sm"><i class="fas fa-undo"></i> Clear All</button>
     </aside>
 
     <main class="content">
+      <!-- Row 1: KPI Summary -->
       <section class="stats-row" id="statsRow">
         <div class="stat-card" data-status="total">
+          <div class="stat-label">Total Issues</div>
           <div class="stat-value" id="statTotal">0</div>
-          <div class="stat-label">Total Tickets</div>
         </div>
         <div class="stat-card" data-status="new">
-          <div class="stat-value" id="statNew">0</div>
           <div class="stat-label">New</div>
+          <div class="stat-value" id="statNew">0</div>
         </div>
         <div class="stat-card" data-status="inprogress">
-          <div class="stat-value" id="statInProgress">0</div>
           <div class="stat-label">In Progress</div>
+          <div class="stat-value" id="statInProgress">0</div>
         </div>
         <div class="stat-card" data-status="done">
-          <div class="stat-value" id="statDone">0</div>
           <div class="stat-label">Done</div>
+          <div class="stat-value" id="statDone">0</div>
         </div>
-        <div id="dynamicStats"></div>
       </section>
 
-      <section class="charts-section">
-        <div class="chart-grid">
-          <div class="chart-container"><canvas id="chartPie"></canvas></div>
-          <div class="chart-container"><canvas id="chartDonut"></canvas></div>
+      <!-- Row 2: Status Matrix -->
+      <section class="section-card" id="statusMatrixSection">
+        <h2>Status-wise Count</h2>
+        <div class="status-matrix" id="statusMatrix"></div>
+      </section>
+
+      <!-- Row 3: Charts -->
+      <section class="charts-row">
+        <div class="section-card">
+          <h2>Issues by Status</h2>
           <div class="chart-container"><canvas id="chartBar"></canvas></div>
-          <div class="chart-container"><canvas id="chartTypeBar"></canvas></div>
         </div>
-        <div class="chart-full">
+        <div class="section-card">
+          <h2>Issue Type Distribution</h2>
+          <div class="chart-container"><canvas id="chartDonut"></canvas></div>
+        </div>
+      </section>
+      <section class="charts-row">
+        <div class="section-card">
+          <h2>Story Points Distribution</h2>
+          <div class="chart-container"><canvas id="chartPie"></canvas></div>
+        </div>
+        <div class="section-card">
+          <h2>Monthly Trend</h2>
           <div class="chart-container"><canvas id="chartLine"></canvas></div>
         </div>
       </section>
 
-      <div class="refresh-bar">
-        <button id="refreshBtn" class="btn-primary"><i class="fas fa-sync-alt"></i> Refresh Jira Data</button>
-        <span id="refreshMsg" class="refresh-msg hidden"></span>
-      </div>
-
+      <!-- Row 4: Table -->
       <section class="table-section">
-        <div class="table-header">
-          <h3><i class="fas fa-table"></i> Tickets</h3>
-          <span id="tableCount"></span>
-          <div class="table-search">
-            <input type="text" id="tableSearch" placeholder="Search tickets...">
+        <div class="table-toolbar">
+          <h3><i class="fas fa-table"></i> Jira Issues</h3>
+          <span class="table-meta" id="tableStatus"></span>
+          <div class="table-actions">
+            <button id="refreshBtn" class="btn-primary"><i class="fas fa-sync-alt"></i> Refresh</button>
+            <div class="table-search">
+              <input type="text" id="tableSearch" placeholder="Search tickets...">
+            </div>
           </div>
         </div>
         <div class="table-wrapper">
@@ -126,6 +143,18 @@
             <tbody></tbody>
           </table>
         </div>
+        <div class="pagination-bar" id="paginationBar">
+          <span class="page-info" id="pageInfo">0 of 0</span>
+          <button class="page-btn" id="pagePrev" disabled><i class="fas fa-chevron-left"></i> Prev</button>
+          <span id="pageNumbers"></span>
+          <button class="page-btn" id="pageNext" disabled>Next <i class="fas fa-chevron-right"></i></button>
+          <select class="table-page-size" id="pageSizeSelect">
+            <option value="25">25 / page</option>
+            <option value="50" selected>50 / page</option>
+            <option value="100">100 / page</option>
+          </select>
+        </div>
+        <span id="refreshMsg" class="refresh-msg hidden"></span>
       </section>
     </main>
   </div>
