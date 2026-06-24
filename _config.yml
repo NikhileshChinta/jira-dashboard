@@ -1,6 +1,2 @@
 title: Jira Dashboard — Comcards_CrossApp
 description: Interactive Jira dashboard with filters, charts, and cross-filtering
-theme: jekyll-theme-hacker
-show_downloads: true
-github:
-  is_project_page: true
