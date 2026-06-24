@@ -80,6 +80,7 @@ async function loadAllData() {
 }
 
 function tryFallback() {
+  hideLoading();
   if (window.CACHED_DATA && window.CACHED_DATA.tickets && window.CACHED_DATA.tickets.length > 0) {
     allVersions = (window.CACHED_DATA.versions || []).filter(v => v.name && v.name.startsWith('2026'));
     allEpics = window.CACHED_DATA.epics || [];
