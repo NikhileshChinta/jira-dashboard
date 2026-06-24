@@ -49,7 +49,7 @@ A workflow at `.github/workflows/refresh-data.yml` fetches Jira data and commits
 | `JIRA_BASE_URL` | `https://your-domain.atlassian.net` |
 | `JIRA_PAT` | Your Jira API token |
 
-3. The workflow runs **every 6 hours** automatically
+3. The workflow runs **every 30 minutes** automatically
 4. To trigger manually: **Actions → Refresh Jira Data → Run workflow**
 
 The workflow uses `proxy/fetch-data.ps1` — a standalone script that fetches data directly without starting an HTTP proxy.
