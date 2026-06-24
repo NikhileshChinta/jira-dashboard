@@ -54,7 +54,11 @@
 
         <div class="filter-group">
           <label>Epic</label>
-          <select id="filterEpic" multiple></select>
+          <select id="filterEpic" multiple style="display:none"></select>
+          <button id="epicFilterBtn" class="filter-select-btn">
+            <span id="epicSelectedLabel">Select Epics</span>
+            <i class="fas fa-chevron-down"></i>
+          </button>
         </div>
 
         <div class="filter-group">
@@ -157,6 +161,25 @@
         <span id="refreshMsg" class="refresh-msg hidden"></span>
       </section>
     </main>
+  </div>
+</div>
+
+<!-- Epic Picker Modal -->
+<div id="epicModal" class="modal-overlay hidden">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3>Select Epics</h3>
+      <button id="epicModalClose" class="modal-close-btn"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-search">
+      <i class="fas fa-search"></i>
+      <input type="text" id="epicSearch" placeholder="Search epics by ID or description...">
+    </div>
+    <div class="modal-list" id="epicList"></div>
+    <div class="modal-footer">
+      <button id="epicClearBtn" class="btn-sm" style="width:auto;padding:6px 16px"><i class="fas fa-undo"></i> Clear</button>
+      <button id="epicApplyBtn" class="btn-primary" style="padding:6px 20px"><i class="fas fa-check"></i> Apply</button>
+    </div>
   </div>
 </div>
 

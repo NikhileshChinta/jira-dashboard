@@ -18,6 +18,8 @@ let proxyOnline = false;
 
 let currentPage = 0;
 let pageSize = 50;
+let epicItems = [];
+let pendingEpics = new Set();
 
 const $ = id => document.getElementById(id);
 const loadingEl = $('loadingOverlay');
@@ -136,6 +138,7 @@ function getMonth(d) {
 function buildFilters() {
   const epicMap = {};
   allEpics.forEach(e => { epicMap[e.key] = e.fields.summary || e.key; });
+  epicItems = allEpics.filter(e => e.key).map(e => ({ key: e.key, summary: e.fields.summary || e.key }));
   const epics = new Set(), types = new Set(), arts = new Set(), teams = new Set();
   allTickets.forEach(t => {
     const ek = getEpicKey(t);
@@ -148,13 +151,11 @@ function buildFilters() {
     if (team) teams.add(team);
   });
   populateSelect('filterFixVersion', allVersions.map(v => v.name), true);
-  populateSelect('filterEpic', [...epics].sort().map(e => {
-    const [k, s] = e.split('::');
-    return { value: k, label: `${k}: ${s}` };
-  }));
+  populateSelect('filterEpic', epicItems.map(e => ({ value: e.key, label: `${e.key}: ${e.summary}` })), false);
   populateSelect('filterType', [...types].sort(), true);
   populateSelect('filterArt', [...arts].sort(), true);
   populateSelect('filterTeam', [...teams].sort(), true);
+  updateEpicLabel();
 }
 
 function populateSelect(id, items, isDropdown) {
@@ -377,6 +378,69 @@ function toggleChartFilter(type, value) {
   applyFilters();
 }
 
+/* ─── Epic Modal ─── */
+function updateEpicLabel() {
+  const sel = $('filterEpic');
+  const selected = Array.from(sel.selectedOptions).map(o => o.value);
+  $('epicSelectedLabel').textContent = selected.length === 0 ? 'All' : `${selected.length} selected`;
+}
+
+function openEpicModal() {
+  const sel = $('filterEpic');
+  pendingEpics = new Set(Array.from(sel.selectedOptions).map(o => o.value));
+  renderEpicList('');
+  $('epicSearch').value = '';
+  $('epicModal').classList.remove('hidden');
+  $('epicSearch').focus();
+}
+
+function closeEpicModal() {
+  $('epicModal').classList.add('hidden');
+}
+
+function renderEpicList(query) {
+  const q = query.toLowerCase();
+  const filtered = epicItems.filter(e =>
+    e.key.toLowerCase().includes(q) || e.summary.toLowerCase().includes(q)
+  );
+  const el = $('epicList');
+  if (filtered.length === 0) {
+    el.innerHTML = '<div class="no-results">No epics found</div>';
+    return;
+  }
+  el.innerHTML = filtered.map(e => {
+    const checked = pendingEpics.has(e.key) ? 'checked' : '';
+    return `<label>
+      <input type="checkbox" value="${e.key}" ${checked}>
+      <span class="epic-key">${e.key}</span>
+      <span class="epic-summary">${e.summary}</span>
+    </label>`;
+  }).join('');
+  el.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+    cb.onchange = () => {
+      if (cb.checked) pendingEpics.add(cb.value);
+      else pendingEpics.delete(cb.value);
+    };
+  });
+}
+
+function applyEpicSelection() {
+  const sel = $('filterEpic');
+  Array.from(sel.options).forEach(opt => {
+    opt.selected = pendingEpics.has(opt.value);
+  });
+  updateEpicLabel();
+  closeEpicModal();
+  activeChartFilter = null;
+  applyFilters();
+}
+
+function clearEpicSelection() {
+  pendingEpics.clear();
+  const el = $('epicList');
+  el.querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.checked = false; });
+}
+
 function renderTable() {
   const excluded = EXCLUDE_TYPES;
   const tableTickets = filteredTickets.filter(t => {
@@ -498,14 +562,25 @@ $('pageSizeSelect').onchange = function() {
 };
 
 document.querySelectorAll('.sidebar select').forEach(sel => {
-  sel.addEventListener('change', () => { activeChartFilter = null; applyFilters(); });
+  if (sel.id !== 'filterEpic') {
+    sel.addEventListener('change', () => { activeChartFilter = null; applyFilters(); });
+  }
 });
+
+$('epicFilterBtn').onclick = openEpicModal;
+$('epicModalClose').onclick = closeEpicModal;
+$('epicApplyBtn').onclick = applyEpicSelection;
+$('epicClearBtn').onclick = clearEpicSelection;
+$('epicSearch').oninput = function() { renderEpicList(this.value); };
+$('epicModal').onclick = function(e) { if (e.target === this) closeEpicModal(); };
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeEpicModal(); });
 
 $('clearFiltersBtn').onclick = () => {
   document.querySelectorAll('.sidebar select').forEach(s => {
     if (s.multiple) s.selectedIndex = -1;
     else s.value = '';
   });
+  updateEpicLabel();
   activeChartFilter = null;
   applyFilters();
 };
