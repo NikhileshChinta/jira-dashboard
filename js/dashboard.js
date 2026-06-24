@@ -541,21 +541,21 @@ function renderTable() {
     const sp = t.fields[STORY_POINTS_FIELD];
     const storyPoints = sp != null ? sp : '';
     const status = getStatus(t);
-    const created = t.fields.created ? new Date(t.fields.created).toLocaleDateString() : '';
-    const endDate = t.fields.resolutiondate
-      ? new Date(t.fields.resolutiondate).toLocaleDateString()
-      : t.fields.duedate
-        ? new Date(t.fields.duedate).toLocaleDateString()
-        : '';
+    const createdRaw = t.fields.created || '';
+    const created = createdRaw ? new Date(createdRaw).toLocaleDateString() : '';
+    const resolutionRaw = t.fields.resolutiondate || '';
+    const dueRaw = t.fields.duedate || '';
+    const endRaw = resolutionRaw || dueRaw;
+    const endDate = endRaw ? new Date(endRaw).toLocaleDateString() : '';
 
     return `<tr>
-      <td><a href="${key.startsWith('http') ? key : `https://${PROJECT_KEY}.atlassian.net/browse/${key}`}" target="_blank">${key}</a></td>
-      <td>${escapeHtml(assignee)}</td>
-      <td>${escapeHtml(summary)}</td>
-      <td>${storyPoints}</td>
-      <td>${status}</td>
-      <td>${created}</td>
-      <td>${endDate}</td>
+      <td data-sort="${key}"><a href="${key.startsWith('http') ? key : `https://${PROJECT_KEY}.atlassian.net/browse/${key}`}" target="_blank">${key}</a></td>
+      <td data-sort="${escapeHtml(assignee.toLowerCase())}">${escapeHtml(assignee)}</td>
+      <td data-sort="${escapeHtml(summary.toLowerCase())}">${escapeHtml(summary)}</td>
+      <td data-sort="${storyPoints !== '' ? storyPoints : '-1'}">${storyPoints}</td>
+      <td data-sort="${status.toLowerCase()}">${status}</td>
+      <td data-sort="${createdRaw}">${created}</td>
+      <td data-sort="${endRaw}">${endDate}</td>
     </tr>`;
   }).join('');
 
@@ -583,13 +583,31 @@ function sortTable(col) {
   if (colIdx < 0) return;
 
   rows.sort((a, b) => {
-    const va = a.children[colIdx]?.textContent.trim() || '';
-    const vb = b.children[colIdx]?.textContent.trim() || '';
+    const va = a.children[colIdx]?.getAttribute('data-sort') || a.children[colIdx]?.textContent.trim() || '';
+    const vb = b.children[colIdx]?.getAttribute('data-sort') || b.children[colIdx]?.textContent.trim() || '';
+
+    // Try numeric comparison first
     const na = parseFloat(va), nb = parseFloat(vb);
     if (!isNaN(na) && !isNaN(nb)) return (na - nb) * dir;
+
+    // Try date comparison (ISO strings)
+    const da = new Date(va), db = new Date(vb);
+    if (!isNaN(da.getTime()) && !isNaN(db.getTime())) return (da - db) * dir;
+
+    // Fall back to string comparison
     return va.localeCompare(vb) * dir;
   });
   rows.forEach(r => tbody.appendChild(r));
+
+  // Update sort icons
+  document.querySelectorAll('#ticketsTable th').forEach(th => {
+    const icon = th.querySelector('i');
+    if (th.dataset.col === col) {
+      icon.className = dir === 1 ? 'fas fa-sort-up' : 'fas fa-sort-down';
+    } else {
+      icon.className = 'fas fa-sort';
+    }
+  });
 }
 
 /* ─── Search ─── */
