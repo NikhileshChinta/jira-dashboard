@@ -49,7 +49,7 @@ function Fetch-AllPages {
     param($Jql, $Fields, $Headers)
 
     # First, get total count
-    $firstUrl = "$baseUrl/rest/api/3/search?jql=$([System.Web.HttpUtility]::UrlEncode($Jql))&fields=key&maxResults=1"
+    $firstUrl = "$baseUrl/rest/api/3/search?jql=$([Uri]::EscapeDataString($Jql))&fields=key&maxResults=1"
     $first = Invoke-RestMethod -Uri $firstUrl -Headers $Headers -Method Get
     $total = $first.total
     Write-Host "  Total issues to fetch: $total" -ForegroundColor DarkGray
@@ -68,7 +68,7 @@ function Fetch-AllPages {
 
         for ($p = $batchStart; $p -le $batchEnd; $p++) {
             $startAt = $p * $pageSize
-            $url = "$baseUrl/rest/api/3/search?jql=$([System.Web.HttpUtility]::UrlEncode($Jql))&fields=$Fields&startAt=$startAt&maxResults=$pageSize"
+            $url = "$baseUrl/rest/api/3/search?jql=$([Uri]::EscapeDataString($Jql))&fields=$Fields&startAt=$startAt&maxResults=$pageSize"
 
             $ps = [powershell]::Create()
             $ps.AddScript({

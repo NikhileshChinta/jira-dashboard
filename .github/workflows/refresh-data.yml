@@ -1,0 +1,41 @@
+name: Refresh Jira Data
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      project:
+        description: 'Jira Project Key'
+        required: true
+        default: 'Comcards_CrossApp'
+
+permissions:
+  contents: write
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch Jira data
+        shell: pwsh
+        run: |
+          ./proxy/fetch-data.ps1
+        env:
+          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_PAT: ${{ secrets.JIRA_PAT }}
+          JIRA_PROJECT_KEY: ${{ inputs.project || 'Comcards_CrossApp' }}
+
+      - name: Commit updated data
+        run: |
+          git config user.name "jira-bot"
+          git config user.email "jira-bot@users.noreply.github.com"
+          git add data/data.js
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "auto: refresh Jira data [skip ci]"
+            git push
+          fi

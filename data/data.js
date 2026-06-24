@@ -1,1 +1,1 @@
-var CACHED_DATA = {"versions":[],"epics":[],"tickets":[],"fetchedAt":""};
+var CACHED_DATA = { "versions": [], "epics": [], "tickets": [], "fetchedAt": null };
