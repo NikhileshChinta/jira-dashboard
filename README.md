@@ -15,6 +15,22 @@ GitHub Pages (static)        Your Machine (local)
 
 The frontend is hosted on GitHub Pages. The PowerShell proxy runs locally on your machine and forwards requests to Jira (avoids CORS issues and keeps your PAT secure).
 
+### Caching
+
+The proxy automatically saves fetched data to `data/data.js` after a successful refresh. This file serves as a fallback:
+
+- **Proxy online** → Dashboard loads live data from Jira
+- **Proxy offline** → Dashboard falls back to `data/data.js` (served from GitHub Pages)
+- **Run the proxy** → It updates `data/data.js` automatically
+
+To keep the GitHub Pages fallback up to date, commit and push `data/data.js` after running the proxy:
+
+```bash
+git add data/data.js
+git commit -m "update cached data"
+git push
+```
+
 ## Setup
 
 ### Prerequisites

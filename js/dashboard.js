@@ -64,40 +64,40 @@ async function loadAllData() {
   showLoading();
   try {
     if (!proxyOnline && !(await checkProxy())) {
-      flashMsg('Proxy is offline. Start jira-proxy.ps1 first.', true);
-      hideLoading();
+      tryFallback();
       return;
     }
 
-    const [versionsRes, epicsRes, ticketsRes] = await Promise.all([
-      proxyGet(`/api/versions?project=${PROJECT_KEY}`),
-      proxyGet(`/api/epics?project=${PROJECT_KEY}`),
-      proxyGet(`/api/search?jql=project=${encodeURIComponent(PROJECT_KEY)}&fields=*all`)
-    ]);
+    const res = await fetch(`${PROXY_URL}/api/refresh-all?project=${PROJECT_KEY}`);
+    if (!res.ok) throw new Error(`Proxy error ${res.status}`);
+    const data = await res.json();
 
-    allVersions = (versionsRes.versions || [])
-      .filter(v => v.name && v.name.startsWith('2026'))
-      .sort((a, b) => b.name.localeCompare(a.name));
-
-    allEpics = epicsRes.issues || [];
-
-    if (allVersions.length > 0) {
-      const versionNames = allVersions.map(v => `"${v.name.replace(/"/g, '\\"')}"`).join(',');
-      const ticketsRes2 = await proxyGet(
-        `/api/search?jql=project=${encodeURIComponent(PROJECT_KEY)} AND fixVersion in (${encodeURIComponent(versionNames)})&fields=*all`
-      );
-      allTickets = ticketsRes2.issues || [];
-    } else {
-      allTickets = [];
-    }
+    allVersions = (data.versions || []).filter(v => v.name && v.name.startsWith('2026'));
+    allEpics = data.epics || [];
+    allTickets = data.tickets || [];
 
     lastUpdated.textContent = `Last updated: ${new Date().toLocaleString()}`;
     buildDashboard();
-    flashMsg(`Loaded ${allTickets.length} tickets`);
+    flashMsg(`Loaded ${allTickets.length} tickets (live)`);
   } catch (err) {
-    flashMsg(`Error: ${err.message}`, true);
+    flashMsg(`Live fetch failed: ${err.message}`, true);
+    tryFallback();
   }
   hideLoading();
+}
+
+function tryFallback() {
+  if (window.CACHED_DATA && window.CACHED_DATA.tickets && window.CACHED_DATA.tickets.length > 0) {
+    allVersions = (window.CACHED_DATA.versions || []).filter(v => v.name && v.name.startsWith('2026'));
+    allEpics = window.CACHED_DATA.epics || [];
+    allTickets = window.CACHED_DATA.tickets || [];
+    const fetched = window.CACHED_DATA.fetchedAt ? new Date(window.CACHED_DATA.fetchedAt).toLocaleString() : 'unknown';
+    lastUpdated.textContent = `Cached data from: ${fetched}`;
+    buildDashboard();
+    flashMsg(`Loaded ${allTickets.length} tickets (cached)`);
+  } else {
+    flashMsg('Proxy offline and no cached data found.', true);
+  }
 }
 
 /* ─── Extract custom field values ─── */
