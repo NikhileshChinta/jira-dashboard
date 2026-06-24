@@ -12,33 +12,25 @@ if (-not $config.JiraBaseUrl -or $config.JiraBaseUrl -eq "https://your-domain.at
 $baseUrl = $config.JiraBaseUrl.TrimEnd('/')
 $pat = $config.JiraPat
 $global:pageSize = 100
-$script:cacheDir = Split-Path $PSScriptRoot -Parent
-$script:cacheFile = Join-Path $script:cacheDir "data" "data.js"
-$script:fetchedVersions = $null
-$script:fetchedEpics = $null
-$script:fetchedTickets = $null
+$global:parallelBatch = 10
+$script:cacheDir = Join-Path (Split-Path $PSScriptRoot -Parent) "data"
+$script:cacheFile = Join-Path $script:cacheDir "data.js"
+$script:fields = "key,summary,status,assignee,created,resolutiondate,duedate,fixVersions,issuetype,priority,parent,customfield_10014,customfield_10001,customfield_10002,customfield_10016"
 
 $headers = @{
     "Authorization" = "Bearer $pat"
     "Accept" = "application/json"
 }
 
+# ─── Helpers ───
+
 function Save-Cache {
     param($versions, $epics, $tickets)
-    $cacheDir = Split-Path $script:cacheFile -Parent
-    if (-not (Test-Path $cacheDir)) { New-Item -ItemType Directory -Path $cacheDir -Force | Out-Null }
-
-    $data = @{
-        versions = $versions
-        epics    = $epics
-        tickets  = $tickets
-        fetchedAt = (Get-Date -Format "o")
-    }
-
+    if (-not (Test-Path $script:cacheDir)) { New-Item -ItemType Directory -Path $script:cacheDir -Force | Out-Null }
+    $data = @{ versions = $versions; epics = $epics; tickets = $tickets; fetchedAt = (Get-Date -Format "o") }
     $json = $data | ConvertTo-Json -Depth 10
-    $jsContent = "var CACHED_DATA = $json;"
-    [System.IO.File]::WriteAllText($script:cacheFile, $jsContent, [System.Text.Encoding]::UTF8)
-    Write-Host "Cache saved to $($script:cacheFile)" -ForegroundColor Cyan
+    [System.IO.File]::WriteAllText($script:cacheFile, "var CACHED_DATA = $json;", [System.Text.Encoding]::UTF8)
+    Write-Host "Cache saved ($($script:cacheFile))" -ForegroundColor Cyan
 }
 
 function Write-Response {
@@ -47,191 +39,192 @@ function Write-Response {
     $res.ContentType = "application/json"
     $json = $data | ConvertTo-Json -Depth 10 -Compress
     $buffer = [Text.Encoding]::UTF8.GetBytes($json)
-    $res.ContentLength64 = $buffer.Length
     $res.OutputStream.Write($buffer, 0, $buffer.Length)
     $res.Close()
 }
 
-$listener = New-Object System.Net.HttpListener
-$listener.Prefixes.Add("http://localhost:$Port/")
-try {
-    $listener.Start()
-} catch {
-    Write-Host "ERROR: $($_.Exception.Message)" -ForegroundColor Red
-    exit 1
+# ─── Parallel page fetcher ───
+
+function Fetch-AllPages {
+    param($Jql, $Fields, $Headers)
+
+    # First, get total count
+    $firstUrl = "$baseUrl/rest/api/3/search?jql=$([System.Web.HttpUtility]::UrlEncode($Jql))&fields=key&maxResults=1"
+    $first = Invoke-RestMethod -Uri $firstUrl -Headers $Headers -Method Get
+    $total = $first.total
+    Write-Host "  Total issues to fetch: $total" -ForegroundColor DarkGray
+
+    if ($total -eq 0) { return @() }
+
+    $pageSize = $global:pageSize
+    $totalPages = [math]::Ceiling($total / $pageSize)
+    $allIssues = @()
+    $completed = 0
+    $lock = [System.Threading.Mutex]::new()
+
+    for ($batchStart = 0; $batchStart -lt $totalPages; $batchStart += $global:parallelBatch) {
+        $batchEnd = [math]::Min($batchStart + $global:parallelBatch - 1, $totalPages - 1)
+        $runspaces = @()
+
+        for ($p = $batchStart; $p -le $batchEnd; $p++) {
+            $startAt = $p * $pageSize
+            $url = "$baseUrl/rest/api/3/search?jql=$([System.Web.HttpUtility]::UrlEncode($Jql))&fields=$Fields&startAt=$startAt&maxResults=$pageSize"
+
+            $ps = [powershell]::Create()
+            $ps.AddScript({
+                param($u, $h)
+                $r = Invoke-RestMethod -Uri $u -Headers $h -Method Get -TimeoutSec 120
+                return @{ issues = $r.issues; error = $null }
+            }) | Out-Null
+            $ps.AddParameters(@($url, $Headers)) | Out-Null
+            $handle = $ps.BeginInvoke()
+            $runspaces += @{ Handle = $handle; PS = $ps; Page = $p }
+        }
+
+        foreach ($rs in $runspaces) {
+            try {
+                $result = $rs.PS.EndInvoke($rs.Handle)
+                if ($result.issues) { $allIssues += $result.issues }
+            } catch {
+                Write-Host "  ERROR page $($rs.Page): $($_.Exception.Message)" -ForegroundColor Red
+            }
+            $rs.PS.Dispose()
+            $completed++
+        }
+
+        Write-Host "  Progress: $completed/$totalPages pages ($($allIssues.Count) issues)" -ForegroundColor DarkGray
+    }
+
+    return $allIssues
 }
 
+# ─── Main ───
+
+$listener = New-Object System.Net.HttpListener
+$listener.Prefixes.Add("http://localhost:$Port/")
+try { $listener.Start() } catch { Write-Host "ERROR: $($_.Exception.Message)" -ForegroundColor Red; exit 1 }
+
 Write-Host "Jira Proxy running on http://localhost:$Port" -ForegroundColor Green
-Write-Host "Cache file: $($script:cacheFile)" -ForegroundColor Cyan
+Write-Host "Cache: $($script:cacheFile)" -ForegroundColor Cyan
+Write-Host "Fields: $($script:fields)" -ForegroundColor DarkGray
+Write-Host "Parallel batch: $($global:parallelBatch) pages" -ForegroundColor DarkGray
 Write-Host "Press Ctrl+C to stop" -ForegroundColor Yellow
 
 while ($listener.IsListening) {
     $context = $listener.GetContext()
     $req = $context.Request
     $res = $context.Response
-
     $res.Headers.Add("Access-Control-Allow-Origin", "*")
-    $res.Headers.Add("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+    $res.Headers.Add("Access-Control-Allow-Methods", "GET, OPTIONS")
     $res.Headers.Add("Access-Control-Allow-Headers", "*")
 
-    if ($req.HttpMethod -eq "OPTIONS") {
-        $res.StatusCode = 204
-        $res.Close()
-        continue
-    }
+    if ($req.HttpMethod -eq "OPTIONS") { $res.StatusCode = 204; $res.Close(); continue }
 
     $path = $req.Url.AbsolutePath.TrimEnd('/')
 
     try {
-        $result = $null
         switch -Wildcard ($path) {
             "/api/refresh-all" {
                 $projectKey = $req.QueryString["project"]
                 if (-not $projectKey) { throw "Missing 'project' query parameter" }
+                Write-Host "--- Refresh started: $projectKey ---" -ForegroundColor Yellow
 
-                Write-Host "--- Refreshing all data for $projectKey ---" -ForegroundColor Yellow
-
-                # Fetch versions
+                # 1. Versions
+                Write-Host "[1/3] Fetching versions..." -ForegroundColor Yellow
                 $vUrl = "$baseUrl/rest/api/3/project/$projectKey/versions"
-                Write-Host "GET $vUrl" -ForegroundColor DarkGray
-                $versions = (Invoke-RestMethod -Uri $vUrl -Headers $headers -Method Get) | Where-Object { $_.name -and $_.name.StartsWith('2026') } | Sort-Object name -Descending
+                $allV = Invoke-RestMethod -Uri $vUrl -Headers $headers -Method Get
+                $versions = $allV | Where-Object { $_.name -and $_.name.StartsWith('2026') }
+                Write-Host "       $($versions.Count) versions" -ForegroundColor Green
 
-                # Fetch epics
-                $eJql = [System.Web.HttpUtility]::UrlEncode("project=$projectKey AND issuetype=Epic ORDER BY created DESC")
-                $allEpics = @()
-                $startAt = 0
-                do {
-                    $eUrl = "$baseUrl/rest/api/3/search?jql=$eJql&fields=id,key,summary,status&startAt=$startAt&maxResults=$global:pageSize"
-                    Write-Host "GET $eUrl" -ForegroundColor DarkGray
-                    $page = Invoke-RestMethod -Uri $eUrl -Headers $headers -Method Get
-                    $allEpics += $page.issues
-                    $startAt += $global:pageSize
-                } while ($startAt -lt $page.total)
+                # 2. Epics
+                Write-Host "[2/3] Fetching epics..." -ForegroundColor Yellow
+                $eJql = "project=$projectKey AND issuetype=Epic ORDER BY created DESC"
+                $epics = Fetch-AllPages -Jql $eJql -Fields "id,key,summary,status" -Headers $headers
+                Write-Host "       $($epics.Count) epics" -ForegroundColor Green
 
-                # Fetch tickets for 2026 versions
+                # 3. Tickets with 2026 fix versions
+                Write-Host "[3/3] Fetching tickets..." -ForegroundColor Yellow
                 $allTickets = @()
                 $vNames = $versions | ForEach-Object { '"' + $_.name.Replace('"', '\"') + '"' }
                 if ($vNames) {
                     $vList = $vNames -join ','
-                    $tJql = [System.Web.HttpUtility]::UrlEncode("project=$projectKey AND fixVersion in ($vList)")
-                    $startAt = 0
-                    do {
-                        $tUrl = "$baseUrl/rest/api/3/search?jql=$tJql&fields=*all&startAt=$startAt&maxResults=$global:pageSize"
-                        Write-Host "GET $tUrl" -ForegroundColor DarkGray
-                        $page = Invoke-RestMethod -Uri $tUrl -Headers $headers -Method Get
-                        $allTickets += $page.issues
-                        $startAt += $global:pageSize
-                    } while ($startAt -lt $page.total)
+                    $tJql = "project=$projectKey AND fixVersion in ($vList)"
+                    $allTickets = Fetch-AllPages -Jql $tJql -Fields $script:fields -Headers $headers
                 }
+                Write-Host "       $($allTickets.Count) tickets" -ForegroundColor Green
 
-                # Save cache
-                Save-Cache -versions $versions -epics $allEpics -tickets $allTickets
+                # Save & respond
+                Save-Cache -versions $versions -epics $epics -tickets $allTickets
+                Write-Host "--- Done ---" -ForegroundColor Green
 
-                Write-Host "--- Refresh complete: $($allTickets.Count) tickets, $($allEpics.Count) epics, $($versions.Count) versions ---" -ForegroundColor Green
-
-                $result = @{
+                Write-Response -res $res -data @{
                     tickets  = $allTickets
-                    epics    = $allEpics
+                    epics    = $epics
                     versions = $versions
                     total    = $allTickets.Count
                 }
-                Write-Response -res $res -data $result
             }
 
             "/api/cached" {
                 if (Test-Path $script:cacheFile) {
-                    $jsContent = [System.IO.File]::ReadAllText($script:cacheFile, [System.Text.Encoding]::UTF8)
-                    # Extract JSON from `var CACHED_DATA = ...;`
-                    if ($jsContent -match 'var CACHED_DATA = (.+);$') {
-                        $json = $Matches[1]
-                        $data = $json | ConvertFrom-Json
+                    $content = [System.IO.File]::ReadAllText($script:cacheFile, [System.Text.Encoding]::UTF8)
+                    if ($content -match 'var CACHED_DATA = (.+);$') {
+                        $data = $Matches[1] | ConvertFrom-Json
                         Write-Response -res $res -data @{ cached = $data; source = "file" }
-                    } else {
-                        throw "Invalid cache file format"
-                    }
+                    } else { throw "Invalid cache file" }
                 } else {
-                    $result = @{ cached = $null; source = "none" }
-                    Write-Response -res $res -data $result
+                    Write-Response -res $res -data @{ cached = $null; source = "none" }
                 }
             }
 
             "/api/search" {
                 $jql = $req.QueryString["jql"]
-                if (-not $jql) { throw "Missing 'jql' query parameter" }
+                if (-not $jql) { throw "Missing 'jql' parameter" }
                 $fields = $req.QueryString["fields"]
-                if (-not $fields) { $fields = "*all" }
-
-                $allIssues = @()
-                $startAt = 0
-                do {
-                    $url = "$baseUrl/rest/api/3/search?jql=$([System.Web.HttpUtility]::UrlEncode($jql))&fields=$fields&startAt=$startAt&maxResults=$global:pageSize"
-                    Write-Host "GET $url" -ForegroundColor DarkGray
-                    $page = Invoke-RestMethod -Uri $url -Headers $headers -Method Get
-                    $allIssues += $page.issues
-                    $startAt += $global:pageSize
-                } while ($startAt -lt $page.total)
-
-                $result = @{ issues = $allIssues; total = $allIssues.Count }
-                Write-Response -res $res -data $result
+                if (-not $fields) { $fields = $script:fields }
+                $issues = Fetch-AllPages -Jql $jql -Fields $fields -Headers $headers
+                Write-Response -res $res -data @{ issues = $issues; total = $issues.Count }
             }
 
             "/api/versions" {
                 $projectKey = $req.QueryString["project"]
-                if (-not $projectKey) { throw "Missing 'project' query parameter" }
-                $url = "$baseUrl/rest/api/3/project/$projectKey/versions"
-                Write-Host "GET $url" -ForegroundColor DarkGray
-                $v = Invoke-RestMethod -Uri $url -Headers $headers -Method Get
-                $result = @{ versions = $v }
-                Write-Response -res $res -data $result
+                if (-not $projectKey) { throw "Missing 'project' parameter" }
+                $v = Invoke-RestMethod -Uri "$baseUrl/rest/api/3/project/$projectKey/versions" -Headers $headers -Method Get
+                Write-Response -res $res -data @{ versions = $v }
             }
 
             "/api/epics" {
                 $projectKey = $req.QueryString["project"]
-                if (-not $projectKey) { throw "Missing 'project' query parameter" }
+                if (-not $projectKey) { throw "Missing 'project' parameter" }
                 $jql = "project=$projectKey AND issuetype=Epic ORDER BY created DESC"
-                $allIssues = @()
-                $startAt = 0
-                do {
-                    $url = "$baseUrl/rest/api/3/search?jql=$([System.Web.HttpUtility]::UrlEncode($jql))&fields=id,key,summary,status&startAt=$startAt&maxResults=$global:pageSize"
-                    Write-Host "GET $url" -ForegroundColor DarkGray
-                    $page = Invoke-RestMethod -Uri $url -Headers $headers -Method Get
-                    $allIssues += $page.issues
-                    $startAt += $global:pageSize
-                } while ($startAt -lt $page.total)
-                $result = @{ issues = $allIssues; total = $allIssues.Count }
-                Write-Response -res $res -data $result
+                $issues = Fetch-AllPages -Jql $jql -Fields "id,key,summary,status" -Headers $headers
+                Write-Response -res $res -data @{ issues = $issues; total = $issues.Count }
             }
 
             "/api/fields" {
-                $url = "$baseUrl/rest/api/3/field"
-                Write-Host "GET $url" -ForegroundColor DarkGray
-                $f = Invoke-RestMethod -Uri $url -Headers $headers -Method Get
-                $result = @{ fields = $f }
-                Write-Response -res $res -data $result
+                $f = Invoke-RestMethod -Uri "$baseUrl/rest/api/3/field" -Headers $headers -Method Get
+                Write-Response -res $res -data @{ fields = $f }
             }
 
             "/api/proxy" {
                 $jiraPath = $req.QueryString["path"]
-                if (-not $jiraPath) { throw "Missing 'path' query parameter" }
-                $queryString = $req.Url.Query
-                $queryParts = [System.Web.HttpUtility]::ParseQueryString($queryString)
-                $queryParts.Remove("path")
-                $remainingQuery = $queryParts.ToString()
-
+                if (-not $jiraPath) { throw "Missing 'path' parameter" }
+                $qs = $req.Url.Query
+                $parts = [System.Web.HttpUtility]::ParseQueryString($qs)
+                $parts.Remove("path")
+                $remaining = $parts.ToString()
                 $url = "$baseUrl$jiraPath"
-                if ($remainingQuery) { $url += "?$remainingQuery" }
-                Write-Host "GET $url" -ForegroundColor DarkGray
+                if ($remaining) { $url += "?$remaining" }
                 $d = Invoke-RestMethod -Uri $url -Headers $headers -Method Get
                 Write-Response -res $res -data $d
             }
 
             "/health" {
-                $result = @{ status = "ok"; timestamp = (Get-Date -Format "o") }
-                Write-Response -res $res -data $result
+                Write-Response -res $res -data @{ status = "ok"; timestamp = (Get-Date -Format "o") }
             }
 
             default {
-                Write-Response -res $res -data @{ error = "Unknown endpoint: $path" } -statusCode 404
+                Write-Response -res $res -data @{ error = "Unknown: $path" } -statusCode 404
             }
         }
     } catch {

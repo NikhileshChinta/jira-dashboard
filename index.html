@@ -11,8 +11,17 @@
 <div id="app">
   <header>
     <div class="header-left">
-      <h1><i class="fab fa-jira"></i> Comcards_CrossApp Dashboard</h1>
-      <span id="lastUpdated">Last updated: --</span>
+      <div class="header-brand">
+        <div class="citi-logo">
+          <svg viewBox="0 0 50 24" width="50" height="24" role="img" aria-label="Citi">
+            <text x="0" y="20" font-family="Arial, sans-serif" font-size="22" font-weight="700" fill="#E11931" letter-spacing="1">citi</text>
+          </svg>
+        </div>
+        <div class="header-title">
+          <h1>EMPOWER - JIRA DELIVERY DASHBOARD</h1>
+          <span id="lastUpdated">Last updated: --</span>
+        </div>
+      </div>
     </div>
     <div class="header-right">
       <span id="connectionStatus" class="status-dot offline" title="Proxy not connected"></span>
@@ -27,7 +36,13 @@
 
   <div class="dashboard-layout">
     <aside class="sidebar">
-      <h3><i class="fas fa-filter"></i> Filters</h3>
+      <div class="sidebar-project">
+        <i class="fas fa-diagram-project"></i>
+        <span>COMCARDS_CrossApp</span>
+      </div>
+
+      <div class="sidebar-section">
+        <h3><i class="fas fa-filter"></i> Filters</h3>
 
       <div class="filter-group">
         <label><i class="fas fa-tag"></i> Fix Version/s</label>
@@ -52,6 +67,8 @@
       <div class="filter-group">
         <label><i class="fas fa-users"></i> Scrum Team</label>
         <select id="filterTeam"></select>
+      </div>
+
       </div>
 
       <button id="clearFiltersBtn" class="btn-sm"><i class="fas fa-undo"></i> Clear All</button>

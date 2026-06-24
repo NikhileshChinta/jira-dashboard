@@ -34,14 +34,26 @@ header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 24px;
+  padding: 12px 24px;
   background: var(--bg2);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 2px solid var(--accent);
 }
 
-.header-left h1 { font-size: 20px; font-weight: 600; }
-.header-left h1 i { color: var(--accent); margin-right: 8px; }
-#lastUpdated { font-size: 12px; color: var(--text2); margin-top: 4px; display: block; }
+.header-left { display: flex; align-items: center; }
+.header-brand { display: flex; align-items: center; gap: 14px; }
+.citi-logo {
+  display: flex; align-items: center; justify-content: center;
+  width: 48px; height: 48px; background: #fff; border-radius: 8px;
+}
+.citi-logo svg { display: block; }
+.header-title h1 {
+  font-size: 20px; font-weight: 700;
+  background: linear-gradient(135deg, #a29bfe, #6c5ce7);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+#lastUpdated { font-size: 11px; color: var(--text2); margin-top: 2px; display: block; }
 
 .header-right { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text2); }
 
@@ -65,7 +77,7 @@ header {
 @keyframes spin { to { transform: rotate(360deg); } }
 #loadingOverlay p { margin-top: 16px; color: var(--text2); }
 
-.dashboard-layout { display: flex; gap: 0; height: calc(100vh - 62px); }
+.dashboard-layout { display: flex; gap: 0; height: calc(100vh - 74px); }
 
 /* Sidebar */
 .sidebar {
@@ -73,7 +85,16 @@ header {
   border-right: 1px solid var(--border); padding: 16px;
   overflow-y: auto;
 }
-.sidebar h3 { font-size: 14px; margin-bottom: 16px; color: var(--accent2); }
+.sidebar-project {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; margin-bottom: 16px;
+  background: var(--bg3); border-radius: 8px;
+  border-left: 3px solid var(--accent);
+  font-size: 13px; font-weight: 600; color: var(--text);
+}
+.sidebar-project i { color: var(--accent2); font-size: 16px; }
+.sidebar-section { margin-bottom: 12px; }
+.sidebar-section h3 { font-size: 12px; margin-bottom: 12px; color: var(--text2); text-transform: uppercase; letter-spacing: .5px; }
 .filter-group { margin-bottom: 16px; }
 .filter-group label { display: block; font-size: 12px; color: var(--text2); margin-bottom: 4px; font-weight: 500; }
 .filter-group select {
