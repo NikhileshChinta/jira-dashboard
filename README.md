@@ -1,19 +1,43 @@
 # Jira Dashboard — Comcards_CrossApp
 
-An interactive Jira dashboard with filters, charts, and a data table, powered by a local PowerShell proxy.
+An interactive Jira dashboard with filters, charts, and a data table — live on GitHub Pages.
 
-## Architecture
+## Architecture Overview
 
+There are **two modes** for getting data into the dashboard:
+
+### Mode 1: Live Proxy (for local use)
 ```
-GitHub Pages (static)        Your Machine (local)
-┌──────────────────┐         ┌──────────────────┐
-│  index.html       │  ───→  │  jira-proxy.ps1   │  ───→  Jira Cloud API
-│  css/style.css    │  fetch  │  (http://localhost │         (REST API)
-│  js/dashboard.js  │  ←───  │   :8080)          │  ←───
-└──────────────────┘         └──────────────────┘
+Browser ──→ Proxy (your machine) ──→ Jira Cloud API
 ```
+A PowerShell script (`jira-proxy.ps1`) runs on your local machine. The browser calls `localhost:8080`, the proxy forwards to Jira. This avoids browser CORS restrictions and keeps your PAT on your machine.
 
-The frontend is hosted on GitHub Pages. The PowerShell proxy runs locally on your machine and forwards requests to Jira (avoids CORS issues and keeps your PAT secure).
+### Mode 2: Automated refresh (for GitHub Pages visitors)
+```
+GitHub Actions (every 30 min) ──→ Jira API directly ──→ commits data/data.js
+                                                              ↓
+GitHub Pages serves index.html ←── data/data.js (static cache)
+```
+This mode uses a **separate script** (`fetch-data.ps1`) that calls the Jira API **directly** — no proxy needed. It runs in GitHub's infrastructure (or any server) and saves the result to `data/data.js`, which GitHub Pages serves as a static file.
+
+### Why no proxy is needed for Mode 2
+
+- `fetch-data.ps1` is a **server-to-server** script, not a browser application
+- Server-to-server API calls have no CORS restrictions
+- The PAT is injected securely via GitHub Secrets, never exposed to the browser
+- The browser only reads the final cached JSON — no live API calls at all
+
+### Why a backend API can't run on GitHub Pages
+
+GitHub Pages is **static hosting only** — HTML, CSS, JS. It cannot run Python, Node.js, PowerShell, or any server-side code. To host a live backend API (e.g. Flask, FastAPI, Express), you would need a server or serverless platform (internal Citi server, AWS Lambda, Cloudflare Workers, etc.).
+
+### Comparison
+
+| Approach | Real-time data | Needs server | Setup effort |
+|---|---|---|---|
+| Local proxy | ✅ Yes | Your machine only | 5 min |
+| GH Actions + static cache | ⏱️ 30-min delay | No server needed | 10 min |
+| Custom backend API | ✅ Yes | Yes (any cloud/internal server) | Varies |
 
 ### Caching
 
