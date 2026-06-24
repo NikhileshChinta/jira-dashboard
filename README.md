@@ -101,6 +101,67 @@ git commit -m "update cache"
 git push
 ```
 
+### Option C: Custom backend API (real-time, needs a server)
+
+Instead of the static cache approach, you can deploy a small backend API on any server (internal Citi server, AWS, Azure, etc.) that the browser calls directly. This replaces the local proxy entirely.
+
+**How it works:**
+
+```
+Browser ──→ Your API (server) ──→ Jira Cloud
+```
+
+The API:
+- Listens on a URL accessible to all users
+- Accepts the same requests the dashboard sends to the proxy
+- Forwards them to Jira with your PAT (stored server-side)
+- Returns the response — no CORS issues since the browser calls your API, not Jira directly
+
+**Example (Python FastAPI):**
+
+```python
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+import httpx
+
+app = FastAPI()
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+JIRA_URL = "https://your-domain.atlassian.net"
+JIRA_PAT = "your-token"
+HEADERS = {"Authorization": f"Bearer {JIRA_PAT}", "Accept": "application/json"}
+
+@app.get("/api/search")
+async def search(jql: str, fields: str = "*all"):
+    async with httpx.AsyncClient() as client:
+        all_issues = []
+        start = 0
+        while True:
+            r = await client.get(f"{JIRA_URL}/rest/api/3/search", params={"jql": jql, "fields": fields, "startAt": start, "maxResults": 100}, headers=HEADERS)
+            data = r.json()
+            all_issues += data.get("issues", [])
+            start += 100
+            if start >= data.get("total", 0):
+                break
+        return {"issues": all_issues, "total": len(all_issues)}
+```
+
+Then update `PROXY_URL` in `js/dashboard.js` to point to your API URL instead of `localhost:8080`.
+
+**Where to host:**
+
+| Platform | Notes |
+|---|---|
+| Internal Citi server | Best for compliance — data never leaves corporate network |
+| AWS Lambda + API Gateway | Serverless, pay-per-use |
+| Azure Functions | Same as Lambda |
+| Cloudflare Workers | Edge-deployed, very low latency |
+| Render / Railway | Simple deployment from git |
+| Google Cloud Run | Container-based, auto-scaling |
+
+**Pros:** Real-time data, no 30-min delay, no local proxy needed, PAT stays on server
+**Cons:** Requires a server (internal or cloud), needs IT/infra setup
+
 ## Setup
 
 ### Prerequisites
