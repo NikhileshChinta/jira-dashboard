@@ -160,19 +160,25 @@ function buildFilters() {
     if (team) teams.add(team);
   });
 
-  populateSelect('filterFixVersion', allVersions.map(v => v.name));
+  populateSelect('filterFixVersion', allVersions.map(v => v.name), true);
   populateSelect('filterEpic', [...epics].sort().map(e => {
     const [k, s] = e.split('::');
     return { value: k, label: `${k}: ${s}` };
   }));
-  populateSelect('filterType', [...types].sort());
-  populateSelect('filterArt', [...arts].sort());
-  populateSelect('filterTeam', [...teams].sort());
+  populateSelect('filterType', [...types].sort(), true);
+  populateSelect('filterArt', [...arts].sort(), true);
+  populateSelect('filterTeam', [...teams].sort(), true);
 }
 
-function populateSelect(id, items) {
+function populateSelect(id, items, isDropdown) {
   const sel = $(id);
   sel.innerHTML = '';
+  if (isDropdown) {
+    const all = document.createElement('option');
+    all.value = '';
+    all.textContent = 'All';
+    sel.appendChild(all);
+  }
   items.forEach(item => {
     const opt = document.createElement('option');
     if (typeof item === 'object') {
@@ -188,7 +194,12 @@ function populateSelect(id, items) {
 
 /* ─── Filtering ─── */
 function getSelected(id) {
-  return Array.from($(id).selectedOptions).map(o => o.value);
+  const sel = $(id);
+  if (!sel.multiple) {
+    const val = sel.value;
+    return val ? [val] : [];
+  }
+  return Array.from(sel.selectedOptions).map(o => o.value);
 }
 
 function applyFilters() {
@@ -592,7 +603,13 @@ document.querySelectorAll('.sidebar select').forEach(sel => {
 });
 
 $('clearFiltersBtn').onclick = () => {
-  document.querySelectorAll('.sidebar select').forEach(s => { s.selectedIndex = -1; });
+  document.querySelectorAll('.sidebar select').forEach(s => {
+    if (s.multiple) {
+      s.selectedIndex = -1;
+    } else {
+      s.value = '';
+    }
+  });
   activeChartFilter = null;
   applyFilters();
 };

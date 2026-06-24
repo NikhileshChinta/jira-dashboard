@@ -17,6 +17,11 @@ The frontend is hosted on GitHub Pages. The PowerShell proxy runs locally on you
 
 ## Setup
 
+### Prerequisites
+- PowerShell 5.1+ (Windows) or PowerShell Core 7+ (macOS/Linux)
+- A [Jira API token](https://id.atlassian.com/manage/api-tokens)
+- Your Jira Cloud URL (e.g. `https://your-domain.atlassian.net`)
+
 ### 1. Configure the proxy
 
 Edit `proxy/config.json`:
@@ -31,23 +36,46 @@ Edit `proxy/config.json`:
 }
 ```
 
-- `JiraBaseUrl` — Your Jira Cloud URL
-- `JiraPat` — Your [Jira API token](https://id.atlassian.com/manage/api-tokens)
-- `ArtCustomFieldId` — Custom field ID for Agile Release Train (find via `/api/fields` endpoint)
-- `ScrumTeamCustomFieldId` — Custom field ID for Scrum Team
+| Field | Description |
+|---|---|
+| `JiraBaseUrl` | Your Jira Cloud URL (e.g. `https://company.atlassian.net`) |
+| `JiraPat` | Jira API token — create one at https://id.atlassian.com/manage/api-tokens |
+| `ProxyPort` | Port for the local proxy (default `8080`) |
+| `ArtCustomFieldId` | Custom field ID for Agile Release Train (see below) |
+| `ScrumTeamCustomFieldId` | Custom field ID for Scrum Team (see below) |
 
 ### 2. Start the proxy
+
+Open a terminal and run:
 
 ```powershell
 cd proxy
 .\jira-proxy.ps1
 ```
 
-The proxy starts on `http://localhost:8080`.
+You should see:
+```
+Jira Proxy running on http://localhost:8080
+Press Ctrl+C to stop
+```
+
+The proxy:
+- Listens on `http://localhost:8080`
+- Forwards requests from the dashboard to Jira Cloud API
+- Handles pagination automatically (fetches all pages)
+- Returns JSON responses to the frontend
+
+**Troubleshooting:**
+- If you get a permission error on Windows, run PowerShell as Administrator and try `Set-ExecutionPolicy RemoteSigned -Scope CurrentUser` first
+- If the port is in use, change `ProxyPort` in `config.json` and update `PROXY_URL` in `js/dashboard.js`
+- On macOS, install PowerShell Core: `brew install powershell`
 
 ### 3. Open the dashboard
 
-Open `https://YOUR_USERNAME.github.io/jira-dashboard/` (GitHub Pages) or `index.html` locally.
+- **GitHub Pages**: https://nikhileshchinta.github.io/jira-dashboard/
+- **Locally**: Open `index.html` directly in your browser (proxy must be running)
+
+The dashboard will connect to the proxy and display a green "Proxy Online" status. If it shows "Proxy Offline", make sure the proxy is running.
 
 ## Features
 
