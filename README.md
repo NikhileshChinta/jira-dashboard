@@ -31,6 +31,52 @@ git commit -m "update cached data"
 git push
 ```
 
+## Automated Data Refresh
+
+The repo includes two approaches to keep `data/data.js` current without manual intervention.
+
+### Option A: GitHub Actions (if enabled)
+
+A workflow at `.github/workflows/refresh-data.yml` fetches Jira data and commits the updated `data/data.js` automatically.
+
+**Setup:**
+
+1. Go to your repo → **Settings → Secrets and variables → Actions → New repository secret**
+2. Add these secrets:
+
+| Secret | Value |
+|---|---|
+| `JIRA_BASE_URL` | `https://your-domain.atlassian.net` |
+| `JIRA_PAT` | Your Jira API token |
+
+3. The workflow runs **every 6 hours** automatically
+4. To trigger manually: **Actions → Refresh Jira Data → Run workflow**
+
+The workflow uses `proxy/fetch-data.ps1` — a standalone script that fetches data directly without starting an HTTP proxy.
+
+### Option B: Any scheduler (Jenkins, cron, Task Scheduler, etc.)
+
+Run `proxy/fetch-data.ps1` on any machine with PowerShell and git access:
+
+```bash
+export JIRA_BASE_URL="https://your-domain.atlassian.net"
+export JIRA_PAT="your-api-token"
+export JIRA_PROJECT_KEY="Comcards_CrossApp"
+pwsh proxy/fetch-data.ps1
+git add data/data.js && git commit -m "update cache" && git push
+```
+
+On Windows Task Scheduler, use:
+```powershell
+$env:JIRA_BASE_URL="https://your-domain.atlassian.net"
+$env:JIRA_PAT="your-api-token"
+$env:JIRA_PROJECT_KEY="Comcards_CrossApp"
+pwsh proxy/fetch-data.ps1
+git add data/data.js
+git commit -m "update cache"
+git push
+```
+
 ## Setup
 
 ### Prerequisites
