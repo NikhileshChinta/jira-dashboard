@@ -113,8 +113,11 @@ function getField(issue, fieldId) {
 }
 
 function getEpicKey(issue) {
-  const epic = issue.fields.customfield_10014 || issue.fields.parent;
-  if (epic && epic.key) return epic.key;
+  const epicField = issue.fields.customfield_10014;
+  if (typeof epicField === 'string' && epicField) return epicField;
+  if (epicField && epicField.key) return epicField.key;
+  const parent = issue.fields.parent;
+  if (parent && parent.key) return parent.key;
   return null;
 }
 
@@ -152,7 +155,10 @@ function buildFilters() {
 
   allTickets.forEach(t => {
     const ek = getEpicKey(t);
-    if (ek && epicMap[ek]) epics.add(`${ek}::${epicMap[ek]}`);
+    if (ek) {
+      const label = epicMap[ek] ? `${ek}::${epicMap[ek]}` : `${ek}::${ek}`;
+      epics.add(label);
+    }
     const type = t.fields.issuetype ? t.fields.issuetype.name : null;
     if (type) types.add(type);
     const art = getField(t, window.ART_FIELD || 'customfield_10001');
