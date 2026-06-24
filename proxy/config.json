@@ -1,0 +1,7 @@
+@{
+    JiraBaseUrl = "https://your-domain.atlassian.net"
+    JiraPat = ""
+    ProxyPort = 8080
+    ArtCustomFieldId = "customfield_10001"
+    ScrumTeamCustomFieldId = "customfield_10002"
+}

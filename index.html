@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jira Dashboard - Comcards_CrossApp</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.0/css/all.min.css">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="header-left">
+      <h1><i class="fab fa-jira"></i> Comcards_CrossApp Dashboard</h1>
+      <span id="lastUpdated">Last updated: --</span>
+    </div>
+    <div class="header-right">
+      <span id="connectionStatus" class="status-dot offline" title="Proxy not connected"></span>
+      <span id="statusText">Proxy Offline</span>
+    </div>
+  </header>
+
+  <div id="loadingOverlay" class="hidden">
+    <div class="spinner"></div>
+    <p>Loading data from Jira...</p>
+  </div>
+
+  <div class="dashboard-layout">
+    <aside class="sidebar">
+      <h3><i class="fas fa-filter"></i> Filters</h3>
+
+      <div class="filter-group">
+        <label><i class="fas fa-tag"></i> Fix Version/s</label>
+        <select id="filterFixVersion" multiple></select>
+      </div>
+
+      <div class="filter-group">
+        <label><i class="fas fa-bookmark"></i> Epic</label>
+        <select id="filterEpic" multiple></select>
+      </div>
+
+      <div class="filter-group">
+        <label><i class="fas fa-tasks"></i> Type</label>
+        <select id="filterType" multiple></select>
+      </div>
+
+      <div class="filter-group">
+        <label><i class="fas fa-train"></i> ART</label>
+        <select id="filterArt" multiple></select>
+      </div>
+
+      <div class="filter-group">
+        <label><i class="fas fa-users"></i> Scrum Team</label>
+        <select id="filterTeam" multiple></select>
+      </div>
+
+      <button id="clearFiltersBtn" class="btn-sm"><i class="fas fa-undo"></i> Clear All</button>
+    </aside>
+
+    <main class="content">
+      <section class="stats-row" id="statsRow">
+        <div class="stat-card" data-status="total">
+          <div class="stat-value" id="statTotal">0</div>
+          <div class="stat-label">Total Tickets</div>
+        </div>
+        <div class="stat-card" data-status="new">
+          <div class="stat-value" id="statNew">0</div>
+          <div class="stat-label">New</div>
+        </div>
+        <div class="stat-card" data-status="inprogress">
+          <div class="stat-value" id="statInProgress">0</div>
+          <div class="stat-label">In Progress</div>
+        </div>
+        <div class="stat-card" data-status="done">
+          <div class="stat-value" id="statDone">0</div>
+          <div class="stat-label">Done</div>
+        </div>
+        <div id="dynamicStats"></div>
+      </section>
+
+      <section class="charts-section">
+        <div class="chart-grid">
+          <div class="chart-container"><canvas id="chartPie"></canvas></div>
+          <div class="chart-container"><canvas id="chartDonut"></canvas></div>
+          <div class="chart-container"><canvas id="chartBar"></canvas></div>
+          <div class="chart-container"><canvas id="chartTypeBar"></canvas></div>
+        </div>
+        <div class="chart-full">
+          <div class="chart-container"><canvas id="chartLine"></canvas></div>
+        </div>
+      </section>
+
+      <div class="refresh-bar">
+        <button id="refreshBtn" class="btn-primary"><i class="fas fa-sync-alt"></i> Refresh Jira Data</button>
+        <span id="refreshMsg" class="refresh-msg hidden"></span>
+      </div>
+
+      <section class="table-section">
+        <div class="table-header">
+          <h3><i class="fas fa-table"></i> Tickets</h3>
+          <span id="tableCount"></span>
+          <div class="table-search">
+            <input type="text" id="tableSearch" placeholder="Search tickets...">
+          </div>
+        </div>
+        <div class="table-wrapper">
+          <table id="ticketsTable">
+            <thead><tr></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script src="js/dashboard.js"></script>
+</body>
+</html>
